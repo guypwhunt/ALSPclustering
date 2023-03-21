@@ -1,9 +1,7 @@
 ![](kcl.png)
 ![](perron.png)
 ![](murdoch.png)
-![](brainsfordementiaresearch.png)
-![](targetals.png)
-
+![](projectMine.png)
 
 # Guide to using the App
 
@@ -17,10 +15,29 @@
 
 Phenotypic file upload, clustering settings and figures of the clustering results.
 
+The phenotypic file must contain the following columns:
 
-## Full Results Table
+CTYDEL                               - Diagnostic delay (in years)
 
-A downloadable CSV of the clustering results.
+Sex_at_birth                         - Sex (1 = Male, 2 = Female)
+
+Site_of_Onset                        - Site of onset (0 = Non-bulbar ,1 =  Bulbar)
+
+Age_at_onset_years                   - Age at symptom onset (in years)
+
+Time_to_death_or_last_followup_years - Disease duration until death or censoring (in years)
+
+Phenotype_1                          - Clinical phenotype (0= Other, 1=ALS)
+
+Phenotype_2                          - Clinical phenotype (0= Other, 1=PLS)
+
+Phenotype_3                          - Clinical phenotype (0= Other, 1=PMA)
+
+As diagnostic delay varies with the country of diagnosis, the webserver will standardize it. However, you can manually standardize diagnostic delay to have mean of 0 and standard deviation of 1 and select country of diagnosis as "Other" in the webserver. 
+
+## Phenotypic Comparison
+
+Phenotypic comparison settings and figures of the results.
 
 ## Affiliations, Funding and Acknowledgements
 
@@ -36,4 +53,4 @@ A.I is funded by the Motor Neurone Disease Association. This study represents in
 
 The views expressed are those of the authors and not necessarily those of the NHS, the NIHR, King’s College London, or the Department of Health and Social Care.
 
-Human post-mortem tissue was obtained from the Medical Research Council London Neurodegenerative Diseases Brain Bank (King’s College London), a member of the Brains for Dementia Research Network and from the Target ALS Human Postmortem Tissue Core, New York Genome Center for Genomics of Neurodegenerative Disease, the Amyotrophic Lateral Sclerosis Association and the Tow Foundation.
+We aknowledge the use of and are thankfully to the Project MINE and Strength ALS patients. 
