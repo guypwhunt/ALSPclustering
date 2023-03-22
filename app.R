@@ -28,6 +28,25 @@ nonCensoredMLModel <- readRDS("data/data_LCAvars_noncens/XGBoost_AUC_final/resul
 
 delay_panel<- read.delim("data/diagDelay_panel.tsv")
 
+fullLdaModel <- readRDS("data/fullLdaModel.rds")
+firstVisiLdaModel <- readRDS("data/firstVisitLdaModel.rds")
+
+panel <- fread("data/standardisationPanel.tsv")
+
+countryCodes <- c("BE",
+                  "CH",
+                  "ES",
+                  "FR",
+                  "GB",
+                  "IE",
+                  "IL",
+                  "IT",
+                  "NL",
+                  "PT",
+                  "SE",
+                  "TR",
+                  "US")
+
 columnToRowNames <- function(df, index) {
   rownames(df) <- df[, index]
   df <- df[,-index]
@@ -35,10 +54,11 @@ columnToRowNames <- function(df, index) {
 }
 
 scaleToPanel <- function(x,ID,panel){
-  rowID<- panel$ID==ID        #define the panel row to scale against
-  x <- x-panel$mean[rowID]    #center on mean
-  x <- x/panel$sd[rowID]      #Scale to reference variance
-
+  try({
+    rowID <- panel$ID == ID        #define the panel row to scale against
+    x <- x - panel$mean[rowID]    #center on mean
+    x <- x / panel$sd[rowID]    #Scale to reference variance
+  })
   x
 }
 
@@ -48,7 +68,7 @@ set.seed(1)
 # UI ####
 ui <- dashboardPage(
   skin = "blue",
-  dashboardHeader(title = "ALS Phenotypic Clustering (Spargo et al., 2023)",
+  dashboardHeader(title = "Latent Cluster ALS (Spargo et al., 2023)",
                   titleWidth = 600),
   ## dashboardSidebar  ####
   dashboardSidebar(
@@ -99,25 +119,34 @@ ui <- dashboardPage(
                        selected = "Data Available at First Vist"),
           br(),
           selectInput(
-            "countryOfOrigin",
-            "Select the Country of Diganosis for all the Patients",
-            c("BE", "CH", "ES", "FR", "GB", "IE", "IL", "IT", "NL", "PT",
-              "SE", "TR", "US", "Other"),
-            selected = "Other")
-          # selectInput(
-          #   "phenotypicColumn",
-          #   "Select a Phenotypic Column",
-          #   NULL,
-          #   selected = NULL,
-          #   multiple = FALSE,
-          #   selectize = TRUE,
-          #   width = NULL,
-          #   size = NULL
-          # )
-        )),
+            "phenotypicColumn",
+            "Select a Phenotypic Column",
+            NULL,
+            selected = NULL,
+            multiple = FALSE,
+            selectize = TRUE,
+            width = NULL,
+            size = NULL
+          ))
+        ),
+      br(),
+      br(),
+      box(
+        width = "105%",
+        height = "105%",
+        status = "primary",
+        solidHeader = TRUE,
+        title = "Linear Discriminant Analysis Plot",
+        plotlyOutput(
+          "ldaPlot",
+          width = "100%",
+          height = "600px",
+          inline = TRUE
+        )
+      ),
+      br(),
       br(),
       h2("Full Table of Clustering Results"),
-
       fluidRow(
         column(
           DT::dataTableOutput("fulltable"),
@@ -127,21 +156,7 @@ ui <- dashboardPage(
       ),
       br(),
       downloadButton("downloadClusteringResults", "Download"),
-      br(),
-      br()#,
-      # box(
-      #   width = "105%",
-      #   height = "105%",
-      #   status = "primary",
-      #   solidHeader = TRUE,
-      #   title = "Linear Discriminant Analysis Plot",
-      #   plotlyOutput(
-      #     "ldaPlot",
-      #     width = "100%",
-      #     height = "600px",
-      #     inline = TRUE
-      #   )
-      # )
+      br()
     ),
     tabItem(
       tabName = "phenotypicComparisonPage",
@@ -222,7 +237,7 @@ ui <- dashboardPage(
       br(),
       h2("Tutorial Video"),
       br(),
-      HTML('<iframe width="560" height="315" src="https://www.youtube.com/embed/BM6fjephXiU" frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>'),
+      HTML('<iframe width="560" height="315" src="https://www.youtube.com/embed/Au2HctMrvlY" frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>'),
       h2("An Example Phenotypic File"),
       br(),
       downloadButton("downloadPFile", "Download Phenotypic File")
@@ -237,7 +252,7 @@ server <- function(input, output, session) {
       phenotypicDf = NULL
     )
 
-  observeEvent(input$phenotypicFile, {
+  observeEvent(input$clusteringButton, {
     tryCatch({
       phenotypicFile = input$phenotypicFile
 
@@ -264,11 +279,11 @@ server <- function(input, output, session) {
           selected = "NA"
         )
 
-        # updateSelectInput(session,
-        #                   "phenotypicColumn",
-        #                   choices = columnNames,
-        #                   selected = columnNames[1])
-        }
+        updateSelectInput(session,
+                          "phenotypicColumn",
+                          choices = columnNames,
+                          selected = columnNames[1])
+      }
     }, error = function(e) {
       showNotification(
         'An error occurred importing the phenotypic file. Please see the subsequent message for details.',
@@ -277,109 +292,136 @@ server <- function(input, output, session) {
       )
       try(showNotification(toString(e), type = "error", duration = 30))
     })
-  })
 
-  observeEvent(input$clusteringButton, {
     tryCatch({
-
       if(input$mlModelChoice == "Data Available at First Vist"){
         mlModel <- firstVisitMLModel
+        ldaModel <- firstVisiLdaModel
       } else if (input$mlModelChoice == "Uncensored Patient's Data") {
         mlModel <- nonCensoredMLModel
+        ldaModel <- fullLdaModel
       } else {
         mlModel <- fullMLModel
+        ldaModel <- fullLdaModel
       }
 
-      if(!input$countryOfOrigin == "Other") {
+      for(country in unique(objects$phenotypicDf$Country_of_Diagnosis)) {
+        if(country %in% countryCodes) {
+          subselectedDf <-
+            objects$phenotypicDf[objects$phenotypicDf$Country_of_Diagnosis ==  country,]
 
-        objects$phenotypicDf <- objects$phenotypicDf %>%
-          mutate(
-            CTYDEL = scaleToPanel(CTYDEL,ID = input$countryOfOrigin,
-                                  panel=delay_panel)
-          )
+          subselectedDf[, "CTYDEL"] <-
+            scaleToPanel(subselectedDf[, "CTYDEL"],
+                         ID = country,
+                         panel = delay_panel)
 
-      } else {
-        showNotification("Diagnositic delay has not been standised.
-                         Please ensure you have manually standised it.",
-                         type = "warning")
+          objects$phenotypicDf[objects$phenotypicDf$Country_of_Diagnosis ==  country, "CTYDEL"] <-
+            subselectedDf$CTYDEL
+        } else {
+          subselectedDf <-
+            objects$phenotypicDf[objects$phenotypicDf$Country_of_Diagnosis ==  country,]
+
+          subselectedDf[, "CTYDEL"] <-
+            scaleToPanel(subselectedDf[, "CTYDEL"],
+                         ID = "Total",
+                         panel = delay_panel)
+
+          objects$phenotypicDf[objects$phenotypicDf$Country_of_Diagnosis ==  country, "CTYDEL"] <-
+            subselectedDf$CTYDEL
+        }
       }
-
 
       objects$phenotypicDf$Cluster <- predict(mlModel, newdata = objects$phenotypicDf) %>%
         as.character() %>% str_replace_all("X", "")
 
-      subselectedDataset <- objects$phenotypicDf[, c(
-        "CTYDEL", "Sex_at_birth", "Site_of_Onset", "Age_at_onset_years",
-        "Time_to_death_or_last_followup_years", 	"Phenotype_1",
-        "Phenotype_2", "Phenotype_3", "Cluster")]
+      objects$phenotypicDf$AGEONS_nml <-
+        scaleToPanel(objects$phenotypicDf$Age_at_onset_years,
+                     "Age_at_onset_years",
+                     panel)
 
-      # model <- lda(Cluster ~ ., data = subselectedDataset)
-      #
-      # predicted <- predict(model, subselectedDataset)
-      #
-      # objects$ldaResults <-
-      #   cbind(predicted$x, predicted$posterior) %>%
-      #   as.data.frame()
-      #
-      # objects$ldaResultsMachineFriendly <- objects$ldaResults
-      #
-      # colnames(objects$ldaResultsMachineFriendly) <-
-      #   str_replace_all(
-      #     string = colnames(objects$ldaResultsMachineFriendly),
-      #     pattern = " ",
-      #     repl = ""
-      #   )
-      #
-      # observeEvent(input$phenotypicColumn, {
-      #   output$ldaPlot <- renderPlotly({
-      #     req(input$phenotypicColumn)
-      #     objects$phenotypicColumMachineFriendly <-
-      #       reactive(str_replace_all(
-      #         string = input$phenotypicColumn,
-      #         pattern = " ",
-      #         repl = ""
-      #       ))
-      #
-      #     plot_ly(data = objects$ldaResultsMachineFriendly) %>%
-      #       add_trace(
-      #         x = ~ LD1,
-      #         y = ~ LD2,
-      #         color = ~ ClusterAssignment,
-      #         marker = list(size = 12),
-      #         text = paste0(
-      #           objects$phenotypicColumMachineFriendly(),
-      #           " : ",
-      #           objects$ldaResultsMachineFriendly[, objects$phenotypicColumMachineFriendly()]
-      #         ),
-      #         type = 'scatter',
-      #         mode = 'markers',
-      #         legendgroup = "Cluster",
-      #         showlegend = T
-      #       ) %>%
-      #       add_annotations(
-      #         text = "Clusters",
-      #         xref = "paper",
-      #         yref = "paper",
-      #         x = 1.02,
-      #         xanchor = "left",
-      #         y = 0.9,
-      #         yanchor = "bottom",
-      #         # Same y as legend below
-      #         legendtitle = TRUE,
-      #         showarrow = FALSE
-      #       ) %>%
-      #       #Increase distance between groups in Legend
-      #       layout(
-      #         legend = list(
-      #           tracegroupgap = 50,
-      #           y = 0.9,
-      #           yanchor = "top"
-      #         ),
-      #         xaxis = list(title = 'Linear Discriminant 1'),
-      #         yaxis = list(title = 'Linear Discriminant 2')
-      #       )
-      #   })
-      # })
+      objects$phenotypicDf$DELAY_nml <-
+        scaleToPanel(objects$phenotypicDf$CTYDEL,
+                     "Diagnostic_delay_years",
+                     panel)
+
+
+      objects$phenotypicDf[, "CTYDEL"] <- objects$phenotypicDf[, "DELAY_nml"]
+
+      if ("Time_to_death_or_last_followup_years" %in% colnames(objects$phenotypicDf)) {
+        objects$phenotypicDf$SRV_nml <-
+          scaleToPanel(
+            objects$phenotypicDf$Time_to_death_or_last_followup_years,
+            "Time_to_death_or_last_followup_years",
+            panel
+          )
+      }
+
+      subselectedDataset <- objects$phenotypicDf
+
+      subselectedDataset$C <- subselectedDataset$Cluster
+
+      columnNames <- colnames(subselectedDataset)
+
+      columnNames[columnNames %in% c("Phenotype_1", "Phenotype_2", "Phenotype_3")] <- c("PHE_1", "PHE_2", "PHE_3")
+
+      colnames(subselectedDataset) <- columnNames
+
+      predicted <- predict(ldaModel, subselectedDataset)
+
+      lda_class <- predicted$x
+
+      plot_dat <- cbind(subselectedDataset, lda_class)
+
+      objects$phenotypicDf <- cbind(objects$phenotypicDf, lda_class)
+
+
+      observeEvent(input$phenotypicColumn, {
+        output$ldaPlot <- renderPlotly({
+          req(input$phenotypicColumn)
+
+          plot_ly(data = objects$phenotypicDf) %>%
+            add_trace(
+              x = ~ LD1,
+              y = ~ LD2,
+              color = ~ Cluster,
+              marker = list(size = 12),
+              text = paste0(
+                input$phenotypicColumn,
+                " : ",
+                objects$phenotypicDf[, input$phenotypicColumn]
+              ),
+              type = 'scatter',
+              mode = 'markers',
+              legendgroup = "Cluster",
+              showlegend = T
+            ) %>%
+            add_annotations(
+              text = "Clusters",
+              xref = "paper",
+              yref = "paper",
+              x = 1.02,
+              xanchor = "left",
+              y = 0.9,
+              yanchor = "bottom",
+              # Same y as legend below
+              legendtitle = TRUE,
+              showarrow = FALSE
+            ) %>%
+            #Increase distance between groups in Legend
+            layout(
+              legend = list(
+                tracegroupgap = 50,
+                y = 0.9,
+                yanchor = "top"
+              ),
+              xaxis = list(title = 'Linear Discriminant 1'),
+              yaxis = list(title = 'Linear Discriminant 2')
+            )
+        })
+      })
+
+
+
 
     }, error = function(e) {
       showNotification(
