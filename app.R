@@ -345,7 +345,8 @@ server <- function(input, output, session) {
                      panel)
 
 
-      objects$phenotypicDf[, "CTYDEL"] <- objects$phenotypicDf[, "DELAY_nml"]
+      objects$phenotypicDf[!objects$phenotypicDf$Country_of_Diagnosis %in% countryCodes, "CTYDEL"] <-
+        objects$phenotypicDf[!objects$phenotypicDf$Country_of_Diagnosis %in% countryCodes, "DELAY_nml"]
 
       if ("Time_to_death_or_last_followup_years" %in% colnames(objects$phenotypicDf)) {
         objects$phenotypicDf$SRV_nml <-
