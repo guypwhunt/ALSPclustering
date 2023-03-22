@@ -344,10 +344,6 @@ server <- function(input, output, session) {
                      "Diagnostic_delay_years",
                      panel)
 
-
-      objects$phenotypicDf[!objects$phenotypicDf$Country_of_Diagnosis %in% countryCodes, "CTYDEL"] <-
-        objects$phenotypicDf[!objects$phenotypicDf$Country_of_Diagnosis %in% countryCodes, "DELAY_nml"]
-
       if ("Time_to_death_or_last_followup_years" %in% colnames(objects$phenotypicDf)) {
         objects$phenotypicDf$SRV_nml <-
           scaleToPanel(
